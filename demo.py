@@ -1,66 +1,97 @@
+import json, requests, datetime, ConfigParser, argparse, sys, csv, yaml, os
 
-import json, requests, datetime, ConfigParser, argparse, sys, csv, yaml
 from requests.auth import HTTPBasicAuth
 
 
-def get_auth(whichAuth):
-	with open ('mode.yml', 'r') as f:
-		mode = yaml.load(f) 
+#############
+# Constants #
+#############
 
-	token = mode["mode"]["token"]
-	password = mode["mode"]["password"]
-	auth = (token, password)
-	return auth
+MODE_URL = 'https://modeanalytics.com'
+CONFIG_FILE = 'mode.yml'
+
+
+####################
+# Helper Functions #
+####################
+
+def get_api_url(organisation, report_token):
+    return '/api/' + organisation + '/reports/' + report_token
+
+def get_auth(whichAuth, token, password):
+    auth = (token, password)
+    return auth
 
 def get_response_json(url, auth):
-	response = requests.get(url, auth=auth)
-	return response.json()
+    response = requests.get(url, auth=auth)
+    return response.json()
 
-def get_mode_results():
 
-	if __name__ == '__main__':
-		parser = argparse.ArgumentParser()
-		parser.add_argument('-org', '--org')
-		parser.add_argument('-reporttoken', '--reporttoken')
-		args = parser.parse_args()
+#################
+# Main Function #
+#################
 
-	mode_url = 'https://modeanalytics.com'
-	if(args.org is not None and args.reporttoken is not None):
-		api_url = '/api/' + args.org + '/reports/' + args.reporttoken
-	else:
-		sys.exit('We did not get your -org or -reporttoken parameters.')
+def main(args):
+    # Read command line arguments
+    output_directory = args.output_dir
 
-	auth = get_auth('mode')
+    # Read config file
+    with open(CONFIG_FILE, 'r') as f:
+        config = yaml.load(f)
+    org_name = config['organisation']['name']
+    reports  = config['organisation']['reports']
+    token    = config['mode']['token']
+    password = config['mode']['password']
 
-	url = mode_url + api_url
+    report_directory = os.path.join(output_directory, 'mode_reports')
+    if not os.path.isdir(report_directory):
+        os.makedirs(report_directory)
 
-	print "API URL: " + url
+    if not reports:
+        print("No reports listed in {}, exiting".format(
+            CONFIG_FILE
+        ))
+    for reporttoken in reports:
+        # Assemble request information
+        auth    = get_auth('mode', token, password)
+        api_url = get_api_url(org_name, reporttoken)
+        url     = MODE_URL + api_url
+        print("Dumping queries from report @ {}".format(url))
 
-	data = get_response_json(url, auth)
+        # Retrieve and parse data
+        data  = get_response_json(url, auth)
+        links = data['_links']
+        last_run = links['last_successful_run']
+        run_url = last_run['href']
+        url = MODE_URL + run_url + '/query_runs/'
 
-	links = data['_links']
-	last_run = links['last_successful_run']
-	run_url = last_run['href']	
-	url = mode_url + run_url + '/query_runs/'
+        data = get_response_json(url, auth)
+        embedded = data['_embedded']
+        query_runs = embedded['query_runs']
 
-	data = get_response_json(url, auth)
-	
-	embedded = data['_embedded']
-	query_runs = embedded['query_runs']
+        # Write data to output directory
+        query_directory = os.path.join(report_directory, reporttoken, 'queries')
+        if not os.path.isdir(query_directory):
+            os.makedirs(query_directory)
 
-	file = open('sql.csv', 'w')
-	writer = csv.writer(file, lineterminator='\n')
-	writer.writerow(["Query Token", "SQL Query"])
+        files_written = 0
+        for query_run in query_runs:
+            output_file = os.path.join(
+                query_directory,
+                'mode_query_{}.sql'.format(query_run['query_token'])
+            )
+            with open(output_file, 'w') as output:
+                output.write(query_run['raw_source'])
+            files_written += 1
 
-	for x in query_runs:
-		token = x['query_token']
-		raw = x['raw_source']
-		print "Query Token: " + token
-		print raw
-		print "*************************************"
-		writer.writerow([token, raw])
+        print("Wrote {} files to {}".format(
+            files_written, query_directory
+        ))
 
-	file.close()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-o', '--output-dir', default='./')
 
-get_mode_results()
+    args = parser.parse_args()
 
+    main(args)

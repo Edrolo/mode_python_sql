@@ -1,16 +1,14 @@
-# mode_python_sql
-This script allows users to download a CSV of raw SQL from queries in a report.
+# Mode Python SQL
+Dumps the queries from one or more reports to the local file system as SQL files.
 
+Forked from https://github.com/mode/mode_python_sql
 
 # Steps to use this script:
 
 1.  In Mode, generate API token (under Settings -> Your Name -> API Tokens).
 2.  Add the token and password values to the mode.yml file.
+3.  Add the name of your organisation to the mode.yml file.
+4.  Add each report you want to retrieve queries from to the mode.yml file.
 3.  Run this script using: 
-    `python demo.py -org={{organization_username}} -reporttoken={{report_token}}`
-
-For example, for this report https://modeanalytics.com/modeanalytics/reports/eb7e7c23e72f I would run:
-
-`python demo.py -org=modeanalytics -reporttoken=eb7e7c23e72f`
-
+    `python demo.py [-o output_directory]`
 
